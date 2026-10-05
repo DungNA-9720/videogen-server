@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "provider_name": "selfhost-ltx25",
+  "backend": "diffusers",
+  "model": {
+    "model_id": "Lightricks/LTX-2.5-Diffusers",
+    "revision": "main",
+    "pipeline_class": "LTX2ConditionPipeline",
+    "torch_dtype": "bfloat16",
+    "variant": null,
+    "allow_patterns": null,
+    "ignore_patterns": [
+      "transformer_full/*",
+      "ltx-2.5-22b-distilled-lora-450-bf16.safetensors"
+    ],
+    "gated": true
+  },
+  "runtime": {
+    "device": "cuda:0",
+    "offload_mode": "model",
+    "layerwise_fp8_storage": true,
+    "vae_tiling": true,
+    "attention_backend": "native",
+    "torch_compile": false,
+    "min_free_vram_gb": 40.0,
+    "max_queue_depth": 8
+  },
+  "generation": {
+    "render_width": 1280,
+    "render_height": 704,
+    "fps": 24,
+    "sigmas_preset": "distilled",
+    "num_inference_steps": 8,
+    "guidance_scale": 1.0,
+    "extra_call_kwargs": {
+      "audio_guidance_scale": 1.0,
+      "stg_scale": 0.0,
+      "audio_stg_scale": 0.0,
+      "modality_scale": 1.0,
+      "audio_modality_scale": 1.0
+    },
+    "keep_audio": true,
+    "condition_strength": 1.0
+  },
+  "constraints": {
+    "frame_multiple": 8,
+    "frame_offset": 1,
+    "size_multiple": 32,
+    "max_native_duration_s": 10.0,
+    "max_duration_s": 30.0,
+    "segment_overlap_frames": 1
+  },
+  "capabilities": {
+    "supports_first_last_frame": true,
+    "max_reference_images": 0,
+    "resolutions": [
+      "1280x704",
+      "1920x1080"
+    ]
+  },
+  "pricing": {
+    "usd_per_second": 0.004
+  },
+  "storage": {
+    "hf_home": "/srv/models/hf",
+    "min_free_gb": 40,
+    "scratch_dir": "/srv/videogen/scratch",
+    "s3_bucket": "vidgen-assets",
+    "s3_prefix": "selfhost/ltx25/"
+  },
+  "service": {
+    "base_url": "http://gpu-01:8800",
+    "callback_url": "http://api.internal/webhooks/providers/selfhost",
+    "callback_hmac_secret_env": "SELFHOST_WEBHOOK_SECRET"
+  }
+}

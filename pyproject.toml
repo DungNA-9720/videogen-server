@@ -1,0 +1,44 @@
+[project]
+name = "videogen-server"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "huggingface_hub>=1.0",  # ships hf_xet
+  "pillow", "numpy",
+  "fastapi", "uvicorn[standard]", "pydantic>=2.7",
+  "httpx", "redis>=5", "boto3",
+  "vidgen-core",
+]
+
+[project.optional-dependencies]
+# torch stack kept optional so unit tests run on machines without a GPU / 10GB of wheels.
+gpu = [
+  "torch==2.13.*", "torchvision==0.28.*",
+  "diffusers>=0.40.0", "transformers>=5.15", "accelerate>=1.0", "safetensors", "av",
+]
+sage = ["sageattention"]  # needs a wheel matching torch+cu130, sm_86
+
+[project.scripts]
+videogen-download = "videogen_server.download:main"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+vidgen-core = { path = "../../video_pipeline/packages/vidgen-core", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "respx"]
+
+[build-system]
+requires = ["uv_build>=0.10,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-m 'not gpu'"
+markers = ["gpu: needs the A6000 + model weights"]
