@@ -24,7 +24,7 @@ videogen-download = "videogen_server.download:main"
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
-vidgen-core = { path = "../../video_pipeline/packages/vidgen-core", editable = true }
+vidgen-core = { path = "vendor/vidgen-core", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
@@ -40,5 +40,6 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
 addopts = "-m 'not gpu'"
 markers = ["gpu: needs the A6000 + model weights"]

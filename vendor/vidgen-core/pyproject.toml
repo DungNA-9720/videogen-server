@@ -1,0 +1,21 @@
+[project]
+name = "vidgen-core"
+version = "0.1.0"
+description = "Shared Pydantic models, enums, settings and errors."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+observability = [
+  "sentry-sdk",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp",
+]
+
+[build-system]
+requires = ["uv_build>=0.10,<0.12"]
+build-backend = "uv_build"

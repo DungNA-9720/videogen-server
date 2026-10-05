@@ -1337,7 +1337,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform != 'linux' and extra == 'gpu'", specifier = "==0.28.*" },
     { name = "transformers", marker = "extra == 'gpu'", specifier = ">=5.15" },
     { name = "uvicorn", extras = ["standard"] },
-    { name = "vidgen-core", editable = "../../video_pipeline/packages/vidgen-core" },
+    { name = "vidgen-core", editable = "vendor/vidgen-core" },
 ]
 provides-extras = ["gpu", "sage"]
 
@@ -1351,7 +1351,7 @@ dev = [
 [[package]]
 name = "vidgen-core"
 version = "0.1.0"
-source = { editable = "../../video_pipeline/packages/vidgen-core" }
+source = { editable = "vendor/vidgen-core" }
 dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
