@@ -102,5 +102,5 @@ class SelfHostConfig(BaseModel):
 
 
 def load_selfhost_config(path: str | Path | None = None) -> SelfHostConfig:
-    p = Path(path or os.environ["VIDGEN_SELFHOST_CONFIG"])
+    p = Path(path or os.environ.get("VIDGEN_SELFHOST_CONFIG", "configs/ltx25.json"))  # cwd-relative
     return SelfHostConfig.model_validate(json.loads(p.read_text(encoding="utf-8")))

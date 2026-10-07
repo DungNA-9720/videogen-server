@@ -57,28 +57,13 @@ def test_validate_against_caps() -> None:
             validate_against_caps(bad, cfg)
 
 
-class FakeRedis:
-    def __init__(self) -> None:
-        self.d: dict[str, str] = {}
-
-    async def set(self, k: str, v: str, ex: int | None = None) -> None:
-        self.d[k] = v
-
-    async def get(self, k: str) -> str | None:
-        return self.d.get(k)
-
-    async def scan_iter(self, match: str):  # type: ignore[no-untyped-def]
-        for k in list(self.d):
-            yield k
-
-
 async def test_api_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from videogen_server import service
 
     cfg = load_selfhost_config(CFG_PATH).model_copy(deep=True)
     cfg.service.callback_url = None
     monkeypatch.setattr(service, "run_request", lambda *a: "s3://b/x.mp4")
-    app = make_app(cfg, JobStore(FakeRedis()), engine=None)
+    app = make_app(cfg, JobStore(":memory:"), engine=None)
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
             r = await c.post("/v1/jobs", json=req().model_dump())
@@ -94,13 +79,34 @@ async def test_api_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
                 await c.post("/v1/jobs", json=req(reference_uris=["x"]).model_dump())
             ).status_code == 422
             assert (await c.get("/v1/jobs/nope")).status_code == 404
+            assert (await c.delete(f"/v1/jobs/{jid}")).status_code == 204
+            assert (await c.get(f"/v1/jobs/{jid}")).status_code == 404
+            assert (await c.delete(f"/v1/jobs/{jid}")).status_code == 404
             assert (await c.get("/healthz")).json()["model_id"] == cfg.model.model_id
+
+
+async def test_delete_removes_file_and_running_is_409(tmp_path: Path) -> None:
+    from vidgen_core.models import VideoJobStatus
+
+    cfg = load_selfhost_config(CFG_PATH).model_copy(deep=True)
+    cfg.storage.output_dir = tmp_path
+    store = JobStore(":memory:")
+    await store.put(VideoJobStatus(provider_job_id="done", state="succeeded"))
+    await store.put(VideoJobStatus(provider_job_id="busy", state="running"))
+    (tmp_path / "done.mp4").write_bytes(b"x")
+    app = make_app(cfg, store, engine=None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        assert (await c.get("/v1/jobs/done/video")).status_code == 200
+        assert (await c.delete("/v1/jobs/busy")).status_code == 409
+        assert (await c.delete("/v1/jobs/done")).status_code == 204
+        assert not (tmp_path / "done.mp4").exists()
+        assert (await c.get("/v1/jobs/done/video")).status_code == 404
 
 
 async def test_restart_fails_running_jobs() -> None:
     from vidgen_core.models import VideoJobStatus
 
-    store = JobStore(FakeRedis())
+    store = JobStore(":memory:")
     await store.put(VideoJobStatus(provider_job_id="j", state="running"))
     await store.fail_running()
     st = await store.get("j")

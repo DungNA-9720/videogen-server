@@ -6,7 +6,7 @@ dependencies = [
   "huggingface_hub>=1.0",  # ships hf_xet
   "pillow", "numpy",
   "fastapi", "uvicorn[standard]", "pydantic>=2.7",
-  "httpx", "redis>=5", "boto3",
+  "httpx", "boto3",
   "vidgen-core",
 ]
 

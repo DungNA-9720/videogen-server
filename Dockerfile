@@ -5,6 +5,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_PYTHON=3.12 UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 \
     HF_HOME=/models/hf HF_HUB_OFFLINE=1 HF_XET_CHUNK_CACHE_SIZE_BYTES=0 \
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+VOLUME /app/data
 WORKDIR /app
 COPY vendor ./vendor
 COPY uv.lock pyproject.toml ./

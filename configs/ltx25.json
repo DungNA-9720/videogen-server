@@ -62,15 +62,14 @@
     "usd_per_second": 0.004
   },
   "storage": {
-    "hf_home": "/srv/models/hf",
+    "hf_home": "data/hf",
     "min_free_gb": 40,
-    "scratch_dir": "/srv/videogen/scratch",
-    "s3_bucket": "vidgen-assets",
-    "s3_prefix": "selfhost/ltx25/"
+    "scratch_dir": "data/scratch",
+    "output_dir": "data/output"
   },
   "service": {
-    "base_url": "http://gpu-01:8800",
-    "callback_url": "http://api.internal/webhooks/providers/selfhost",
+    "base_url": "http://localhost:8800",
+    "callback_url": null,
     "callback_hmac_secret_env": "SELFHOST_WEBHOOK_SECRET"
   }
 }

@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import os
 import shutil
+import sqlite3
 import tempfile
 import uuid
 from contextlib import asynccontextmanager
@@ -24,25 +25,36 @@ from vidgen_core.selfhost import SelfHostConfig, load_selfhost_config
 from videogen_server import segments as seg
 from videogen_server.segments import GenerationOOM, InvalidInput, SegmentJob
 
-KEY = "selfhost:job:"
-
-
 class JobStore:
-    """Redis-backed job state so a restart doesn't lose it. `r` is a redis.asyncio client."""
+    """SQLite job state (lives on the data volume) so a restart doesn't lose it."""
 
-    def __init__(self, r: Any) -> None:
-        self.r = r
+    def __init__(self, path: str | Path) -> None:
+        self.db = sqlite3.connect(path, check_same_thread=False)  # only the event loop uses it
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, status TEXT NOT NULL,"
+            " created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )  # fmt: skip
 
     async def put(self, st: VideoJobStatus) -> None:
-        await self.r.set(KEY + st.provider_job_id, st.model_dump_json(), ex=7 * 86400)
+        with self.db:
+            self.db.execute(
+                "INSERT INTO jobs(id, status) VALUES(?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET status=excluded.status",
+                (st.provider_job_id, st.model_dump_json()),
+            )
 
     async def get(self, job_id: str) -> VideoJobStatus | None:
-        raw = await self.r.get(KEY + job_id)
-        return VideoJobStatus.model_validate_json(raw) if raw else None
+        row = self.db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        return VideoJobStatus.model_validate_json(row[0]) if row else None
+
+    async def delete(self, job_id: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM jobs WHERE id=?", (job_id,))
 
     async def fail_running(self) -> None:
-        async for k in self.r.scan_iter(match=KEY + "*"):
-            st = VideoJobStatus.model_validate_json(await self.r.get(k))
+        for (raw,) in self.db.execute("SELECT status FROM jobs").fetchall():
+            st = VideoJobStatus.model_validate_json(raw)
             if st.state == "running":
                 await self.put(
                     st.model_copy(update={"state": "failed", "error": "server restarted"})
@@ -187,6 +199,17 @@ def make_app(cfg: SelfHostConfig, store: JobStore, engine: Any) -> FastAPI:
             raise HTTPException(404, "unknown job")
         return st
 
+    @app.delete("/v1/jobs/{job_id}", status_code=204)
+    async def delete(job_id: str) -> None:
+        st = await store.get(job_id)
+        if st is None:
+            raise HTTPException(404, "unknown job")
+        if st.state == "running":
+            raise HTTPException(409, "job still running")
+        if cfg.storage.output_dir and job_id.isalnum():
+            (cfg.storage.output_dir / f"{job_id}.mp4").unlink(missing_ok=True)
+        await store.delete(job_id)
+
     @app.get("/v1/jobs/{job_id}/video")
     async def video(job_id: str) -> FileResponse:
         out = cfg.storage.output_dir
@@ -218,14 +241,17 @@ def make_app(cfg: SelfHostConfig, store: JobStore, engine: Any) -> FastAPI:
 
 def build_app() -> FastAPI:
     """uvicorn entry: `uvicorn --factory videogen_server.service:build_app --workers 1`."""
-    import redis.asyncio as aioredis
+    cfg = load_selfhost_config()
+    # Defaults so a bare `uvicorn --factory ...` works; the environment still wins. Must precede torch/hf imports.
+    os.environ.setdefault("HF_HOME", str(cfg.storage.hf_home.resolve()))
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")  # weights come from `videogen-download`
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     import torch
 
     from videogen_server.download import ensure_model
     from videogen_server.engine_ltx2 import LTX2Engine
 
-    cfg = load_selfhost_config()
-    if os.environ.get("HF_HUB_OFFLINE") != "1":
+    if os.environ["HF_HUB_OFFLINE"] != "1":
         ensure_model(cfg)
     free = torch.cuda.mem_get_info()[0] / 1024**3
     if free < cfg.runtime.min_free_vram_gb:
@@ -235,5 +261,7 @@ def build_app() -> FastAPI:
     engine = LTX2Engine(cfg)
     engine.load()
     # ponytail: no warm-up clip; first job pays the compile/offload warm cost. Add if p99 matters.
-    store = JobStore(aioredis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0")))
+    data = cfg.storage.output_dir or cfg.storage.scratch_dir
+    data.mkdir(parents=True, exist_ok=True)
+    store = JobStore(data / "jobs.db")
     return make_app(cfg, store, engine)

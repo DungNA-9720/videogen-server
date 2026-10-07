@@ -1,0 +1,15 @@
+services:
+  videogen:
+    build: .
+    ports: ["8800:8800"]
+    volumes:
+      - videogen-data:/app/data         # jobs.db + videos + scratch
+      - ${HF_CACHE:?set HF_CACHE to the host HF cache dir}:/models/hf
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+    restart: unless-stopped
+
+volumes:
+  videogen-data:
