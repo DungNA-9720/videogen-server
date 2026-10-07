@@ -7,6 +7,7 @@ from diffusers import LTX2ConditionPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT, DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
+from huggingface_hub import snapshot_download
 from vidgen_core.selfhost import SelfHostConfig
 
 from videogen_server.segments import GenerationOOM, SegmentJob
@@ -20,9 +21,16 @@ class LTX2Engine:
     def load(self) -> None:
         c = self.cfg
         dtype = getattr(torch, c.model.torch_dtype)
-        pipe = LTX2ConditionPipeline.from_pretrained(
+        # Local snapshot path skips diffusers' "cache complete?" check, which fails offline
+        # because ignore_patterns (transformer_full/*) were never downloaded.
+        path = snapshot_download(
             c.model.model_id,
             revision=c.model.revision,
+            ignore_patterns=c.model.ignore_patterns,
+            local_files_only=True,
+        )
+        pipe = LTX2ConditionPipeline.from_pretrained(
+            path,
             torch_dtype=dtype,
             variant=c.model.variant,
         )  # model_id LẤY TỪ JSON
