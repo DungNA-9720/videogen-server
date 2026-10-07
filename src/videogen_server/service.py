@@ -16,6 +16,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from PIL import Image
 from vidgen_core.models import VideoJobStatus, VideoRequest
 from vidgen_core.selfhost import SelfHostConfig, load_selfhost_config
@@ -94,6 +95,13 @@ def upload_s3(cfg: SelfHostConfig, path: str, job_id: str) -> str:
     return f"s3://{cfg.storage.s3_bucket}/{key}"
 
 
+def save_local(cfg: SelfHostConfig, path: str, job_id: str) -> str:
+    out = cfg.storage.output_dir
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.move(path, out / f"{job_id}.mp4")
+    return f"{cfg.service.base_url}/v1/jobs/{job_id}/video"
+
+
 def run_request(engine: Any, cfg: SelfHostConfig, job_id: str, req: VideoRequest) -> str:
     """Split -> generate each segment (chaining last frame) -> concat -> S3. Blocking."""
     c, g = cfg.constraints, cfg.generation
@@ -102,6 +110,7 @@ def run_request(engine: Any, cfg: SelfHostConfig, job_id: str, req: VideoRequest
     last = fetch_image(req.last_frame_uri) if req.last_frame_uri else None
     seed = seg.pick_seed(req.seed)
     durations = seg.split_duration(req.duration_s, c.max_native_duration_s)
+    cfg.storage.scratch_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=job_id, dir=cfg.storage.scratch_dir))
     try:
         parts: list[str] = []
@@ -120,7 +129,8 @@ def run_request(engine: Any, cfg: SelfHostConfig, job_id: str, req: VideoRequest
                 first = Image.open(seg.last_frame(out, str(work / f"last{k}.png"))).convert("RGB")
         final = str(work / "final.mp4")
         seg.concat(parts, final, c.segment_overlap_frames, g.keep_audio)
-        return upload_s3(cfg, final, job_id)
+        save = save_local if cfg.storage.output_dir else upload_s3
+        return save(cfg, final, job_id)
     finally:
         shutil.rmtree(work, ignore_errors=True)  # scratch quota is 20GB
 
@@ -176,6 +186,14 @@ def make_app(cfg: SelfHostConfig, store: JobStore, engine: Any) -> FastAPI:
         if st is None:
             raise HTTPException(404, "unknown job")
         return st
+
+    @app.get("/v1/jobs/{job_id}/video")
+    async def video(job_id: str) -> FileResponse:
+        out = cfg.storage.output_dir
+        f = out / f"{job_id}.mp4" if out and job_id.isalnum() else None
+        if f is None or not f.is_file():
+            raise HTTPException(404, "no video")
+        return FileResponse(f, media_type="video/mp4", filename=f.name)
 
     @app.get("/v1/capabilities")
     async def capabilities() -> dict[str, Any]:

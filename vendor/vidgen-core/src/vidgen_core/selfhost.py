@@ -69,8 +69,9 @@ class StorageSection(BaseModel):
     hf_home: Path
     min_free_gb: float = 40
     scratch_dir: Path
-    s3_bucket: str
+    s3_bucket: str = ""
     s3_prefix: str = ""
+    output_dir: Path | None = None  # set -> keep results on this server, skip S3
 
 
 class ServiceSection(BaseModel):
